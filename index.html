@@ -9,9 +9,30 @@
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const TYPES=['برداشت آب','برداشت غیرمجاز','آبفروشی','احداث بنا','تجاوز به بستر','تجاوز به حریم','انسداد رودخانه','پل','دیوارکشی','خاکریزی','تخلیه نخاله','تصرف اراضی','چاه','قنات','چشمه','آبراهه','حادثه خیز','لایروبی','تعمیر و نگهداری','سازه آبی','سایر'];
 let db={rivers:[],points:[],photos:[],cases:[],tracks:[],settings:{gpsAccuracy:20},historical:[],waterBank:[]},gps=null,track=null,watch=null;
-const IDB='WaterMonitor_Final_Engineering',VER=1;let idb;
+const IDB='WaterMonitor_Final_Engineering',VER=2;let idb;
 function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open(IDB,VER);r.onupgradeneeded=()=>{let d=r.result;['meta','photos'].forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'})});};r.onsuccess=()=>{idb=r.result;res()};r.onerror=()=>rej(r.error)})}
-async function load(){await openDB();let x=await get('meta','db');if(x){db=x.value}else{let seed=await fetch('data/seed.json').then(r=>r.json());db.rivers=[{id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()}];db.points=seed.points;db.historical=seed.historical;db.waterBank=seed.waterBank;db.photos=[];db.cases=[];db.tracks=[];db.settings={gpsAccuracy:20};await put('meta',{id:'db',value:db})}show('home')}
+async function load(){
+ await openDB();
+ let x=await get('meta','db');
+ let seed=null;
+ try{seed=await fetch('./data/seed.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error('seed unavailable');return r.json()})}catch(e){console.warn('Seed data unavailable',e)}
+ if(x){
+   db=x.value||{};
+   db.rivers=Array.isArray(db.rivers)?db.rivers:[]; db.points=Array.isArray(db.points)?db.points:[]; db.historical=Array.isArray(db.historical)?db.historical:[]; db.waterBank=Array.isArray(db.waterBank)?db.waterBank:[]; db.photos=Array.isArray(db.photos)?db.photos:[]; db.cases=Array.isArray(db.cases)?db.cases:[]; db.tracks=Array.isArray(db.tracks)?db.tracks:[]; db.settings=db.settings||{gpsAccuracy:20};
+   if(seed){
+     if(!db.rivers.some(r=>r.id==='DLI-001')) db.rivers.unshift({id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()});
+     if(db.historical.length===0 && seed.historical?.length) db.historical=seed.historical;
+     if(db.waterBank.length===0 && seed.waterBank?.length) db.waterBank=seed.waterBank;
+     if(db.points.length===0 && seed.points?.length) db.points=seed.points;
+   }
+   await put('meta',{id:'db',value:db});
+ }else{
+   if(!seed) seed={points:[],historical:[],waterBank:[]};
+   db.rivers=[{id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()}];
+   db.points=seed.points||[]; db.historical=seed.historical||[]; db.waterBank=seed.waterBank||[]; db.photos=[]; db.cases=[]; db.tracks=[]; db.settings={gpsAccuracy:20}; await put('meta',{id:'db',value:db});
+ }
+ show('home');
+}
 function get(store,id){return new Promise((res,rej)=>{let q=idb.transaction(store).objectStore(store).get(id);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error)})}function put(store,v){return new Promise((res,rej)=>{let q=idb.transaction(store,'readwrite').objectStore(store).put(v);q.onsuccess=()=>res();q.onerror=()=>rej(q.error)})}function save(){return put('meta',{id:'db',value:db})}
 function nav(p){document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.p===p))}function show(p){nav(p);if(p==='home')home();else if(p==='new')newPoint();else if(p==='rivers')rivers();else if(p==='map')mapPage();else more()}
 document.querySelectorAll('.nav button').forEach(b=>b.onclick=()=>show(b.dataset.p));
