@@ -9,7 +9,7 @@
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const TYPES=['برداشت آب','برداشت غیرمجاز','آبفروشی','احداث بنا','تجاوز به بستر','تجاوز به حریم','انسداد رودخانه','پل','دیوارکشی','خاکریزی','تخلیه نخاله','تصرف اراضی','چاه','قنات','چشمه','آبراهه','حادثه خیز','لایروبی','تعمیر و نگهداری','سازه آبی','سایر'];
 let db={rivers:[],points:[],photos:[],cases:[],tracks:[],settings:{gpsAccuracy:20},historical:[],waterBank:[]},gps=null,track=null,watch=null;
-const IDB='WaterMonitor_Final_Engineering',VER=2;let idb;
+const IDB='WaterMonitor_Final_Engineering_v8',VER=1;let idb;
 function openDB(){return new Promise((res,rej)=>{let r=indexedDB.open(IDB,VER);r.onupgradeneeded=()=>{let d=r.result;['meta','photos'].forEach(s=>{if(!d.objectStoreNames.contains(s))d.createObjectStore(s,{keyPath:'id'})});};r.onsuccess=()=>{idb=r.result;res()};r.onerror=()=>rej(r.error)})}
 async function load(){
  await openDB();
@@ -20,16 +20,17 @@ async function load(){
    db=x.value||{};
    db.rivers=Array.isArray(db.rivers)?db.rivers:[]; db.points=Array.isArray(db.points)?db.points:[]; db.historical=Array.isArray(db.historical)?db.historical:[]; db.waterBank=Array.isArray(db.waterBank)?db.waterBank:[]; db.photos=Array.isArray(db.photos)?db.photos:[]; db.cases=Array.isArray(db.cases)?db.cases:[]; db.tracks=Array.isArray(db.tracks)?db.tracks:[]; db.settings=db.settings||{gpsAccuracy:20};
    if(seed){
-     if(!db.rivers.some(r=>r.id==='DLI-001')) db.rivers.unshift({id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()});
+     if(Array.isArray(seed.rivers)) seed.rivers.forEach(sr=>{ if(!db.rivers.some(r=>r.id===sr.id)) db.rivers.push(sr); });
      if(db.historical.length===0 && seed.historical?.length) db.historical=seed.historical;
      if(db.waterBank.length===0 && seed.waterBank?.length) db.waterBank=seed.waterBank;
      if(db.points.length===0 && seed.points?.length) db.points=seed.points;
+     if(db.cases.length===0 && seed.cases?.length) db.cases=seed.cases;
    }
    await put('meta',{id:'db',value:db});
  }else{
-   if(!seed) seed={points:[],historical:[],waterBank:[]};
-   db.rivers=[{id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()}];
-   db.points=seed.points||[]; db.historical=seed.historical||[]; db.waterBank=seed.waterBank||[]; db.photos=[]; db.cases=[]; db.tracks=[]; db.settings={gpsAccuracy:20}; await put('meta',{id:'db',value:db});
+   if(!seed) seed={rivers:[],points:[],historical:[],waterBank:[],cases:[]};
+   db.rivers=seed.rivers||[{id:'DLI-001',name:'دلیچایی',province:'تهران',county:'دماوند',active:true,created:new Date().toISOString()}];
+   db.points=seed.points||[]; db.historical=seed.historical||[]; db.waterBank=seed.waterBank||[]; db.photos=[]; db.cases=seed.cases||[]; db.tracks=[]; db.settings={gpsAccuracy:20}; await put('meta',{id:'db',value:db});
  }
  show('home');
 }
@@ -46,7 +47,7 @@ function getGPS(){if(!navigator.geolocation){gpsmsg.textContent='GPS این مر
 function previewPhotos(){let files=[...photos.files];photoPreview.innerHTML=files.map(f=>`<div class="mini">${esc(f.name)}</div>`).join('')}
 async function savePointForm(editId){let la=parseFloat(lat.value),lo=parseFloat(lon.value);if(!isFinite(la)||!isFinite(lo)){alert('مختصات معتبر وارد کنید.');return}calcUTM();let r=db.rivers.find(x=>x.id===river.value);let p=editId?db.points.find(x=>x.pointId===editId):null;let id=p?p.pointId:`${r.id}-P-${String(db.points.filter(x=>x.riverId===r.id).length+1).padStart(4,'0')}`;let u=utm(la,lo);let now=new Date();let obj={pointId:id,riverId:r.id,riverName:r.name,date:p?.date||now.toLocaleDateString('fa-IR'),time:p?.time||now.toLocaleTimeString('fa-IR'),latitude:la,longitude:lo,utmZone:u.zone,utmHemisphere:la<0?'S':'N',utmEasting:u.e,utmNorthing:u.n,altitude:parseFloat(alt.value)||null,accuracy:parseFloat(acc.value)||null,pointType:type.value,bedStatus:bed.value,bufferStatus:buffer.value,waterwayStatus:water.value,violationType:violation.value,description:desc.value,action:action.value,riskLevel:risk.value,caseId:p?.caseId||'',caseNumber:caseNo.value,warningNumber:warningNo.value,followUpStatus:follow.value,nextVisit:next.value,inspector:insp.value,photoCount:0,notes:p?.notes||'',source:p?.source||'field',gpsSource:gps?.source||'manual',createdAt:p?.createdAt||now.toISOString(),updatedAt:now.toISOString()};if(p)Object.assign(p,obj);else db.points.push(obj);let files=[...photos.files];for(let f of files){let idp='PHOTO-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7);let data=await fileData(f);await put('photos',{id:idp,pointId:id,riverId:r.id,name:f.name,type:f.type,data,createdAt:now.toISOString(),latitude:la,longitude:lo,utmZone:u.zone,utmEasting:u.e,utmNorthing:u.n,gpsSource:gps?.source||'point_capture'});obj.photoCount++}await save();alert('نقطه با مختصات دقیق ذخیره شد.');show('home')}
 function fileData(f){return new Promise((res,rej)=>{let r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(f)})}
-function rivers(){app.innerHTML=`<div class="card"><h2>رودخانه‌ها</h2><button onclick="addRiver()">＋ افزودن رودخانه</button><p class="muted">نامحدود — هر رودخانه شناسه مستقل، نقاط و خروجی KML جداگانه دارد.</p></div>`+db.rivers.map(r=>`<div class="card"><h3>💧 ${esc(r.name)}</h3><div class="muted">${esc(r.id)} — ${esc(r.province||'')} ${esc(r.county||'')}</div><p>${db.points.filter(p=>p.riverId===r.id).length} نقطه</p><div class="row"><button class="secondary" onclick="riverKML('${r.id}')">🌍 KML رودخانه</button></div></div>`).join('')}
+function rivers(){app.innerHTML=`<div class="card"><h2>رودخانه‌ها</h2><button onclick="addRiver()">＋ افزودن رودخانه</button><p class="muted">نامحدود — هر رودخانه شناسه مستقل، نقاط و خروجی KML جداگانه دارد.</p></div>`+db.rivers.map(r=>`<div class="card"><h3>💧 ${esc(r.name)} ${r.historical?'— سنواتی':''}</h3><div class="muted">${esc(r.id)} — ${esc(r.province||'')} ${esc(r.county||'')}</div><p>${db.points.filter(p=>p.riverId===r.id).length} نقطه فعلی · ${db.cases.filter(c=>c.riverId===r.id).length} پرونده</p><div class="row"><button class="secondary" onclick="riverKML('${r.id}')">🌍 KML رودخانه</button></div></div>`).join('')}
 function addRiver(){let n=prompt('نام رودخانه:');if(!n)return;let id='RIV-'+String(db.rivers.length+1).padStart(3,'0');db.rivers.push({id,name:n,active:true,created:new Date().toISOString()});save();rivers()}
 function mapPage(){let p=db.points[0];let src=p?`https://www.openstreetmap.org/export/embed.html?bbox=${p.longitude-.04}%2C${p.latitude-.04}%2C${p.longitude+.04}%2C${p.latitude+.04}&layer=mapnik&marker=${p.latitude}%2C${p.longitude}`:'https://www.openstreetmap.org/export/embed.html?bbox=52%2C35%2C53%2C36&layer=mapnik';app.innerHTML=`<div class="card"><h2>نقشه نقاط</h2><iframe style="width:100%;height:430px;border:0;border-radius:14px" src="${src}"></iframe><p class="muted">نقشه پایه برای نمایش به اینترنت نیاز دارد؛ مختصات و KML مستقل از نقشه ذخیره می‌شوند.</p></div><div class="search"><input id="q" placeholder="جستجو در نقاط و سوابق سنواتی…" oninput="searchAll()"></div><div id="results">${db.points.map(card).join('')}</div>`}
 function searchAll(){let q=$('q').value.trim().toLowerCase();let ps=db.points.filter(p=>Object.values(p).join(' ').toLowerCase().includes(q));let hs=[];if(q)for(let sh of db.historical)for(let i=1;i<sh.rows.length;i++){let s=sh.rows[i].join(' ').toLowerCase();if(s.includes(q))hs.push({sheet:sh.sheet,row:i+1,data:sh.rows[i]});if(hs.length>=100)break}results.innerHTML=(ps.map(card).join('')||'')+(hs.length?`<div class="card"><h3>سوابق سنواتی (${hs.length})</h3>${hs.map(x=>`<div class="quality"><span>${esc(x.sheet)} — ردیف ${x.row}</span><span class="muted">${esc(x.data.slice(0,5).join(' | '))}</span></div>`).join('')}</div>`:'')||'<div class="card muted">نتیجه‌ای یافت نشد.</div>'}
