@@ -18,7 +18,18 @@ input,select,textarea{border-radius:calc(var(--radius,18px) - 5px)}
 .photo-large{max-width:100%;border-radius:14px;border:1px solid var(--line)}
 @media(max-width:650px){.engineer-grid,.setting-row{grid-template-columns:1fr}.bottom .nav{grid-template-columns:repeat(6,1fr)}.nav button{font-size:10px}.nav span{font-size:17px}}
 </style>
-</head><body><header><div class="head"><div class="logo"><img src="assets/icon-192.png" alt="لوگوی آب" title="پایش منابع آب"></div><div><h1>پایش منابع آب</h1><small>رودخانه، بستر، حریم، تخلفات، پرونده، آبفروشی و پیمایش</small></div></div></header><div class="wrap" id="app"></div><button class="fab" onclick="show('new')">＋</button><div class="bottom"><div class="nav"><button data-p="home"><span>⌂</span>داشبورد</button><button data-p="new"><span>📍</span>ثبت نقطه</button><button data-p="rivers"><span>〰️</span>رودخانه‌ها</button><button data-p="waterbank"><span>💧</span>آبفروشی</button><button data-p="map"><span>🗺️</span>نقشه</button><button data-p="more"><span>☰</span>بیشتر</button></div></div>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIINfQ3BfX2gK3u7N0eW0kKj3zZ9G2Zf9Q0=" crossorigin=""/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script><style id="v17style">
+:root{--water:#087ea4;--water2:#0b5e75;--bg:#eef6f8;--ink:#16333d;--line:#c9dfe5;--shadow:0 8px 24px rgba(12,65,82,.10)}
+body{background:linear-gradient(180deg,#eef7f9 0,#f7fbfc 42%,#eef5f7 100%);font-family:var(--app-font,NotoApp),Tahoma,sans-serif;color:var(--ink)}
+header{background:linear-gradient(135deg,var(--water2),var(--water));box-shadow:0 5px 18px rgba(0,70,90,.18)}
+.logo img{filter:drop-shadow(0 3px 4px rgba(0,0,0,.18))}.card{box-shadow:var(--shadow);border:1px solid var(--line)}
+.engineer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.engineer-grid button{min-height:58px}
+#engMap{height:62vh;min-height:420px;border-radius:16px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+.mapLegend{display:flex;flex-wrap:wrap;gap:7px;margin:10px 0}.mapLegend span{padding:6px 9px;border-radius:10px;background:#fff;border:1px solid var(--line);font-size:12px}
+.riverSwitch{display:flex;align-items:center;gap:8px}.switch input{accent-color:var(--water)}
+.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.detail-grid .field{background:#f7fbfc;border:1px solid var(--line);padding:10px;border-radius:12px}
+@media(max-width:650px){.engineer-grid{grid-template-columns:1fr}.detail-grid{grid-template-columns:1fr}#engMap{height:58vh;min-height:360px}}
+</style></head><body><header><div class="head"><div class="logo"><img src="assets/icon-192.png" alt="لوگوی آب" title="پایش منابع آب"></div><div><h1>پایش منابع آب</h1><small>رودخانه، بستر، حریم، تخلفات، پرونده، آبفروشی و پیمایش</small></div></div></header><div class="wrap" id="app"></div><button class="fab" onclick="show('new')">＋</button><div class="bottom"><div class="nav"><button data-p="home"><span>⌂</span>داشبورد</button><button data-p="new"><span>📍</span>ثبت نقطه</button><button data-p="rivers"><span>〰️</span>رودخانه‌ها</button><button data-p="waterbank"><span>💧</span>آبفروشی</button><button data-p="map"><span>🗺️</span>نقشه</button><button data-p="more"><span>☰</span>بیشتر</button></div></div>
 <script>
 const $=id=>document.getElementById(id);const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const TYPES=['برداشت آب','برداشت غیرمجاز','آبفروشی','احداث بنا','تجاوز به بستر','تجاوز به حریم','انسداد رودخانه','پل','دیوارکشی','خاکریزی','تخلیه نخاله','تصرف اراضی','چاه','قنات','چشمه','آبراهه','حادثه خیز','لایروبی','تعمیر و نگهداری','سازه آبی','سایر'];
@@ -170,6 +181,46 @@ async function saveCaseEdit(id){const c=db.cases.find(x=>x.id===id);if(!c)return
 // Replace point form save so photos are also retained in DB metadata and watermarked where supported.
 const __oldSavePointForm=savePointForm;
 async function savePointForm(editId){return __oldSavePointForm(editId)}
-// boot v12 instead of v11
+
+// ===== V17 GIS / engineering layer =====
+let v17Map=null,v17Layers={};
+function kmlTextToGeoJSON(txt){
+ const doc=new DOMParser().parseFromString(txt,'text/xml'); const ns='http://www.opengis.net/kml/2.2';
+ const fc={type:'FeatureCollection',features:[]};
+ for(const pm of doc.getElementsByTagNameNS(ns,'Placemark')){
+  const name=pm.getElementsByTagNameNS(ns,'name')[0]?.textContent||'حریم و بستر';
+  const desc=pm.getElementsByTagNameNS(ns,'description')[0]?.textContent||'';
+  const coordsEl=pm.getElementsByTagNameNS(ns,'coordinates')[0]; if(!coordsEl) continue;
+  const text=coordsEl.textContent.trim(); const pairs=text.split(/\s+/).map(x=>x.split(',').slice(0,2).map(Number)).filter(x=>x.length===2&&!Number.isNaN(x[0]));
+  const poly=pm.getElementsByTagNameNS(ns,'Polygon')[0], line=pm.getElementsByTagNameNS(ns,'LineString')[0], point=pm.getElementsByTagNameNS(ns,'Point')[0];
+  let geometry=null;
+  if(point) geometry={type:'Point',coordinates:pairs[0]};
+  else if(line) geometry={type:'LineString',coordinates:pairs};
+  else if(poly){const rings=[]; for(const lr of pm.getElementsByTagNameNS(ns,'LinearRing')){const ce=lr.getElementsByTagNameNS(ns,'coordinates')[0];if(ce) rings.push(ce.textContent.trim().split(/\s+/).map(x=>x.split(',').slice(0,2).map(Number)).filter(x=>x.length===2));} geometry={type:'Polygon',coordinates:rings};}
+  else if(pairs.length>2) geometry={type:'LineString',coordinates:pairs};
+  if(geometry) fc.features.push({type:'Feature',properties:{name,description:desc},geometry});
+ }
+ return fc;
+}
+function escHtml(s){return esc(String(s??''))}
+function pointMarker(p){const c=Number(p.riskLevel)==='A'?'#c62828':(p.riskLevel==='B'?'#ef8f00':'#1976d2');return L.circleMarker([p.latitude,p.longitude],{radius:7,weight:2,fillOpacity:.88,color:'#fff',fillColor:c})}
+async function mapPage(){
+ app.innerHTML=`<div class="card"><div class="sectionTitle"><h2>🗺️ مرکز GIS پایش منابع آب</h2><span class="badge">حریم و بستر + نقاط + پرونده‌ها</span></div><div class="mapLegend"><span>🔴 ریسک A</span><span>🟠 ریسک B</span><span>🔵 ریسک C</span><span>▬ حریم/بستر</span></div><div id="engMap"></div><div class="row" style="margin-top:10px"><button onclick="downloadAllPointsKML()">🌍 همه نقاط برای Google Earth</button><button class="secondary" onclick="downloadBedBufferKML()">📐 حریم و بستر KML</button></div></div>`;
+ if(!window.L){$('engMap').innerHTML='<div class="card">نقشه برای بارگذاری نیاز به اینترنت دارد.</div>';return}
+ v17Map=L.map('engMap').setView([35.7,52.4],11); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(v17Map);
+ const points=db.points.filter(p=>isFinite(Number(p.latitude))&&isFinite(Number(p.longitude))); const pg=[];
+ points.forEach(p=>{const m=pointMarker(p).addTo(v17Map);m.bindPopup(`<b>${escHtml(p.pointType||'نقطه')}</b><br>${escHtml(p.riverName)}<br>${escHtml(p.pointId)}<br>${Number(p.latitude).toFixed(7)}, ${Number(p.longitude).toFixed(7)}<br><button onclick="googleEarthPoint(db.points.find(x=>x.pointId==='${String(p.pointId).replace(/'/g,"\\'")}'))">🌍 Google Earth</button>`);pg.push([p.latitude,p.longitude]);});
+ try{const res=await fetch('data/bed_buffer.kml?'+Date.now()); if(res.ok){const txt=await res.text();const gj=kmlTextToGeoJSON(txt);v17Layers.boundary=L.geoJSON(gj,{style:f=>({color:'#0b6e8a',weight:2,fillOpacity:.08}) ,onEachFeature:(f,l)=>l.bindPopup(`<b>${escHtml(f.properties.name)}</b>`)}).addTo(v17Map); if(gj.features.length)v17Map.fitBounds(v17Layers.boundary.getBounds(),{padding:[20,20],maxZoom:14});}}
+ catch(e){console.warn('KML layer',e)}
+ if(pg.length && !v17Layers.boundary)v17Map.fitBounds(pg,{padding:[20,20]});
+}
+function downloadAllPointsKML(){download(kmlFor(db.points),`Paeish_Manaabe_Ab_Points.kml`,'application/vnd.google-earth.kml+xml')}
+function downloadBedBufferKML(){fetch('data/bed_buffer.kml').then(r=>r.blob()).then(b=>{const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='Hریم_و_بستر_رودخانه.kml';a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)})}
+// richer river page with active/inactive engineering controls
+function rivers(){let active=db.rivers.filter(r=>r.active), inactive=db.rivers.filter(r=>!r.active);const cardR=r=>{let pc=db.points.filter(p=>p.riverId===r.id).length,cc=db.cases.filter(c=>c.riverId===r.id).length;return `<div class="card"><div class="sectionTitle"><h3 class="clickable" onclick="riverDetail('${r.id}')">💧 ${esc(r.name)} ${r.historical?'— سنواتی':''}</h3><label class="switch"><input type="checkbox" ${r.active?'checked':''} onchange="toggleRiver('${r.id}')"><span>${r.active?'فعال':'غیرفعال'}</span></label></div><div class="muted">${esc(r.id)} · ${esc(r.province||'')} ${esc(r.county||'')}</div><p><b>${pc}</b> نقطه جدید · <b>${cc.toLocaleString()}</b> پرونده/سابقه</p><div class="row"><button class="secondary" onclick="riverDetail('${r.id}')">جزئیات</button>${r.active?`<button class="secondary" onclick="newPointForRiver('${r.id}')">📍 ثبت نقطه جدید</button>`:''}<button class="secondary" onclick="riverKML('${r.id}')">🌍 KML</button></div></div>`};app.innerHTML=`<div class="card"><div class="sectionTitle"><h2>💧 رودخانه‌ها</h2><span class="riverCount">${db.rivers.length} رودخانه</span></div><p class="muted">رودخانه سنواتی را فعال کنید تا برای بازدیدهای جدید در دسترس قرار گیرد.</p><button onclick="addRiver()">＋ افزودن رودخانه</button></div><div class="card"><h3>فعال (${active.length})</h3>${active.map(cardR).join('')||'<p class="muted">موردی نیست.</p>'}</div><div class="card"><h3>غیرفعال / سنواتی (${inactive.length})</h3>${inactive.map(cardR).join('')||'<p class="muted">موردی نیست.</p>'}</div>`}
+// Settings v17: theme/font plus map and data preferences
+const __settingsPageV17=settingsPage; function settingsPage(){__settingsPageV17(); const st=db.settings||{}; app.insertAdjacentHTML('beforeend',`<div class="card module-card"><h3>⚙️ تنظیمات حرفه‌ای نقشه و داده</h3><div class="setting-row"><div><label>نمایش لایه حریم و بستر روی نقشه</label><input type="checkbox" ${st.showBoundary===false?'':'checked'} onchange="db.settings.showBoundary=this.checked;save()"></div><div><label>نمایش نقاط روی نقشه</label><input type="checkbox" ${st.showPoints===false?'':'checked'} onchange="db.settings.showPoints=this.checked;save()"></div></div><p class="muted">تنظیمات ظاهر و عملکرد فقط روی همین دستگاه ذخیره می‌شود.</p></div>`)}
+
+// boot v17 instead of v12
 loadV12();
 </script></body></html>
