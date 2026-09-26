@@ -14,3 +14,5 @@
 - حفظ ساختار و داده‌های V17
 
 نکته: کنترل دسترسی V18 محلی است. برای امنیت سازمانی واقعی و همگام‌سازی ابری چندکاربره باید Backend احراز هویت و API مشترک اضافه شود.
+
+V21 field fixes: point save/edit reliability, persistent photo bank with photo export ZIP, daily Excel report fix.
