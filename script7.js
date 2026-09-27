@@ -1,9 +1,9 @@
 
 /* V25 clean feature layer: Timesheet + separated management/more + robust persistence helpers */
 (function(){
-  const V25='25.0';
+  const V25='26.0';
   const REMINDER_TIMES=['16:30','17:00','18:00','20:00'];
-  const DAY_NAMES=['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه'];
+  const DAY_NAMES=['یکشنبه','دوشنبه','سه‌شنبه','چهارشنبه','پنجشنبه','جمعه','شنبه'];
   const MONTH_NAMES=['فروردین','اردیبهشت','خرداد','تیر','مرداد','شهریور','مهر','آبان','آذر','دی','بهمن','اسفند'];
   function esc25(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
   function faNow(){return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()).replace(/\u200e/g,'');}
@@ -76,7 +76,7 @@
       <label>شرح فعالیت روزانه</label><textarea id="tsDesc" placeholder="شرح مختصر اقدامات انجام‌شده در روز...">${esc25(t.description)}</textarea>
       <div class="ts-note">در تایم‌شیت <b>عکس و ستون نقطه</b> ثبت نمی‌شود. فقط اطلاعات اداری روزانه ثبت خواهد شد.</div>
       <div class="row"><button onclick="saveTimesheetV25('${esc25(t.id)}')">💾 ثبت / تکمیل تایم‌شیت</button><button class="secondary" onclick="show('home')">← بازگشت</button></div>
-      <div class="card"><h3>🔔 یادآوری‌ها</h3><p class="muted">یادآوری‌های پیش‌فرض: ${REMINDER_TIMES.join('، ')}. اگر تایم‌شیت تکمیل نشود، هشدارهای بعدی ادامه پیدا می‌کنند.</p><button class="secondary" onclick="requestTimesheetNotificationsV25()">🔔 فعال‌سازی اعلان‌های دستگاه</button></div>
+      <div class="card"><h3>🔔 یادآوری‌ها</h3><p class="muted">یادآوری‌های پیش‌فرض: ${REMINDER_TIMES.join('، ')}. تا زمان تکمیل تایم‌شیت، هشدارهای بعدی در زمان‌های تعیین‌شده بررسی می‌شوند؛ اعلان دستگاه به مجوز مرورگر/سیستم‌عامل وابسته است.</p><button class="secondary" onclick="requestTimesheetNotificationsV25()">🔔 فعال‌سازی اعلان‌های دستگاه</button></div>
     </div><div class="card"><div class="sectionTitle"><h3>📅 سوابق تایم‌شیت</h3><button class="secondary" onclick="timesheetMonthlyV25()">گزارش ماهانه</button></div>${(db.timesheets||[]).slice().sort((a,b)=>String(b.dateKey).localeCompare(String(a.dateKey))).slice(0,60).map(x=>`<div class="ts-row"><span><b>${esc25(x.persianDate)}</b><small>${esc25(x.dayName||'')} · ${esc25(x.startTime||'08:00')} تا ${esc25(x.endTime||'—')}</small></span><span class="badge ${isComplete(x)?'success':'review'}">${isComplete(x)?'تکمیل':'ناقص'}</span><button class="secondary" onclick="timesheetPageV25('${esc25(x.id)}')">ویرایش</button></div>`).join('')||'<p class="muted">هنوز تایم‌شیتی ثبت نشده است.</p>'}</div>`;
   };
   function timesheetRows(monthKey){ensureV25();return db.timesheets.filter(t=>String(t.dateKey).startsWith('') && (faMonthKeyFromStored(t)===monthKey));}
@@ -96,15 +96,15 @@
     if(typeof downloadXLSX==='function') downloadXLSX([['خلاصه ماه',summary],['TimeSheet',data]],`TimeSheet_پایش_منابع_آب_${faMonthName(key).replace(/\s+/g,'_')}.xlsx`); else alert('ماژول Excel در دسترس نیست.');
   };
   window.managementV25=function(){
-    app.innerHTML=`<div class="card"><div class="sectionTitle"><h2>📊 مدیریت</h2><span class="badge">سامانه پایش منابع آب</span></div><p class="muted">ابزارهای اصلی مدیریت داده، پرونده، گزارش و خروجی.</p><div class="toolGrid"><button onclick="casesPage()">📁 پرونده‌ها</button><button onclick="historicalExplorer()">🗂 پرونده‌های سنواتی</button><button onclick="window.waterBankPage?window.waterBankPage():show('waterbank')">💧 بانک آبفروشی</button><button onclick="window.photoBank()">📷 بانک عکس</button><button onclick="show('rivers')">🌊 رودخانه‌ها</button><button onclick="mapPageV24()">🗺 حریم و بستر</button><button onclick="managementReportV24()">📋 گزارش مدیریتی</button><button onclick="exportDailyReportV24()">📅 گزارش امروز</button><button onclick="exportEngineeringV24()">📊 Excel مهندسی</button><button onclick="timesheetPageV25()">🕒 تایم‌شیت روزانه</button><button onclick="timesheetMonthlyV25()">📆 تایم‌شیت ماهانه</button><button onclick="usersPage()">👥 کاربران و امنیت</button></div></div>`;
+    app.innerHTML=`<div class="card"><div class="sectionTitle"><h2>📊 مدیریت</h2><span class="badge">سامانه پایش منابع آب</span></div><p class="muted">ابزارهای اصلی مدیریت داده، پرونده، گزارش و خروجی.</p><div class="toolGrid"><button onclick="casesPage()">📁 پرونده‌ها</button><button onclick="historicalExplorer()">🗂 پرونده‌های سنواتی</button><button onclick="window.waterBankPage?window.waterBankPage():show('waterbank')">💧 بانک آبفروشی</button><button onclick="window.photoBank()">📷 بانک عکس</button><button onclick="show('rivers')">🌊 رودخانه‌ها</button><button onclick="mapPageV24()">🗺 حریم و بستر</button><button onclick="managementReportV24()">📋 گزارش مدیریتی</button><button onclick="exportDailyReportV24()">📅 گزارش امروز</button><button onclick="exportEngineeringFinalV26()">📊 Excel مهندسی</button><button onclick="timesheetPageV25()">🕒 تایم‌شیت روزانه</button><button onclick="timesheetMonthlyV25()">📆 تایم‌شیت ماهانه</button><button onclick="usersPage()">👥 کاربران و امنیت</button></div></div>`;
   };
   window.moreV25=function(){
-    app.innerHTML=`<div class="card"><h2>☰ بیشتر</h2><div class="toolGrid"><button onclick="settingsPage()">⚙️ تنظیمات</button><button onclick="backupFullV24()">💾 Backup کامل</button><button onclick="syncCenter()">🔄 انتقال / ورود Backup</button><button onclick="manualHistoricalV24()">📝 فرم دستی / سنواتی</button><button onclick="moreQualityV25()">✅ کنترل کیفیت داده</button><button onclick="aboutV25()">ℹ️ درباره سامانه</button><button onclick="timesheetPageV25()">🕒 تایم‌شیت</button><button onclick="timesheetMonthlyV25()">📆 گزارش ماهانه</button></div></div><div class="card"><h3>👤 اطلاعات کارشناس</h3><p><b>سالار علی‌زاده</b></p><p class="muted">کارشناس پایش منابع آب<br>حوزه فعالیت: آب‌های سطحی و زیرزمینی</p><p class="muted">نسخه سامانه: V25</p></div>`;
+    app.innerHTML=`<div class="card"><h2>☰ بیشتر</h2><div class="toolGrid"><button onclick="settingsPage()">⚙️ تنظیمات</button><button onclick="backupFullV24()">💾 Backup کامل</button><button onclick="syncCenter()">🔄 انتقال / ورود Backup</button><button onclick="manualHistoricalV24()">📝 فرم دستی / سنواتی</button><button onclick="moreQualityV25()">✅ کنترل کیفیت داده</button><button onclick="aboutV25()">ℹ️ درباره سامانه</button><button onclick="timesheetPageV25()">🕒 تایم‌شیت</button><button onclick="timesheetMonthlyV25()">📆 گزارش ماهانه</button></div></div><div class="card"><h3>👤 اطلاعات کارشناس</h3><p><b>سالار علی‌زاده</b></p><p class="muted">کارشناس پایش منابع آب<br>حوزه فعالیت: آب‌های سطحی و زیرزمینی</p><p class="muted">نسخه سامانه: V26</p></div>`;
   };
   window.moreQualityV25=function(){
     const ps=db.points||[],ts=db.timesheets||[];app.innerHTML=`<div class="card"><h2>✅ کنترل کیفیت داده</h2><div class="quality"><span>نقاط بدون مختصات معتبر</span><b>${ps.filter(p=>!isFinite(Number(p.latitude))||!isFinite(Number(p.longitude))).length}</b></div><div class="quality"><span>نقاط بدون UTM</span><b>${ps.filter(p=>!p.utmEasting||!p.utmNorthing).length}</b></div><div class="quality"><span>نقاط بدون عکس</span><b>${ps.filter(p=>!(p.photoCount>0)).length}</b></div><div class="quality"><span>تایم‌شیت‌های ناقص</span><b>${ts.filter(x=>!isComplete(x)).length}</b></div><div class="quality"><span>پرونده‌های باز</span><b>${(db.cases||[]).filter(c=>c.status!=='مختومه').length}</b></div></div><div class="card"><button class="secondary" onclick="moreV25()">← بازگشت</button></div>`;
   };
-  window.aboutV25=function(){app.innerHTML=`<div class="card"><h2>💧 پایش منابع آب</h2><p><b>آب سطحی و زیرزمینی</b></p><p>سامانه ثبت، پایش، مستندسازی، مدیریت پرونده، حریم و بستر، پیمایش، گزارش و خروجی Excel.</p><p class="muted">نسخه 25.0 · کارشناس: سالار علی‌زاده</p><button class="secondary" onclick="moreV25()">← بازگشت</button></div>`};
+  window.aboutV25=function(){app.innerHTML=`<div class="card"><h2>💧 پایش منابع آب</h2><p><b>آب سطحی و زیرزمینی</b></p><p>سامانه ثبت، پایش، مستندسازی، مدیریت پرونده، حریم و بستر، پیمایش، گزارش و خروجی Excel.</p><p class="muted">نسخه 26.0 · کارشناس: سالار علی‌زاده</p><button class="secondary" onclick="moreV25()">← بازگشت</button></div>`};
   const oldShow25=window.show;
   window.show=function(p){if(p==='management'){nav('management');managementV25();return}if(p==='more'){nav('more');moreV25();return}if(p==='home'){oldShow25('home');setTimeout(()=>{ensureV25();showTimesheetBanner();remindV25();},60);return}oldShow25(p);};
   function polishNav25(){const n=document.querySelector('.nav');if(!n)return;n.innerHTML='<button data-p="home" onclick="show(\'home\')"><span>⌂</span>خانه</button><button data-p="new" onclick="show(\'new\')"><span>📍</span>ثبت نقطه</button><button data-p="map" onclick="show(\'map\')"><span>🗺</span>نقشه</button><button data-p="management" onclick="show(\'management\')"><span>📊</span>مدیریت</button><button data-p="more" onclick="show(\'more\')"><span>☰</span>بیشتر</button>';}
@@ -113,6 +113,13 @@
   window.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){ensureV25();remindV25();}});
   setInterval(()=>{if(document.visibilityState==='visible'){ensureV25();remindV25();}},30000);
   // Add TimeSheet to the existing engineering export without changing its other sheets.
-  const oldExportEngineering25=window.exportEngineeringV24;window.exportEngineeringV24=async function(){await oldExportEngineering25();};
-  window.V25={version:V25,reminderTimes:REMINDER_TIMES,start:'08:00'};
+  const oldExportEngineering26=window.exportEngineeringV24;window.exportEngineeringV24=async function(){await oldExportEngineering26();};
+  window.exportEngineeringFinalV26=async function(){
+    try{
+      await window.exportEngineeringV24();
+      const key=faMonthKey();
+      window.exportTimesheetMonthV25(key);
+    }catch(e){console.error(e);alert('خروجی مهندسی/تایم‌شیت ساخته نشد: '+(e.message||e));}
+  };
+  window.V26={version:V25,reminderTimes:REMINDER_TIMES,start:'08:00'};
 })();
